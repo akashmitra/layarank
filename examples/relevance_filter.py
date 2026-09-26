@@ -1,4 +1,23 @@
-"""Example: Relevance filtering for RAG to drop non-evidential and distractor passages with LayaRank."""
+"""Example: Relevance filtering for RAG to drop non-evidential and distractor passages with LayaRank.
+
+This example demonstrates how to use LayaRank's `relevance_rerank()` to evaluate candidate
+passages against a query, retaining true answer evidence while discarding distractor passages
+and off-topic noise.
+
+Topic: The Lord of the Rings (LOTR)
+Query: "How can the One Ring be destroyed, and where must it be taken?"
+
+Expected Result Overview:
+------------------------
+1. Direct Evidence (Doc #0): High score (~0.76+ / top rank). Directly explains how the Ring
+   is destroyed (fires of Mount Doom) and where it was forged.
+2. Supporting Evidence (Doc #1): High score (~0.72+). Provides necessary supporting facts
+   about Frodo carrying the Ring to Mordor / Cracks of Doom.
+3. Partial / Contextual Evidence (Doc #2): Moderate score (~0.70+). Mentions Sauron forging it in Mount Doom.
+4. Distractors / Non-evidential passages (Doc #3, Doc #4, Doc #5):
+   - Doc #3 (Elrond lore) & Doc #4 (Gimli's axe failing): Mention Ring/Rivendell but lack answer facts.
+   - Doc #5 (D&D Bag of Holding): Completely irrelevant cross-domain distractor.
+"""
 
 import sys
 from pathlib import Path
@@ -13,25 +32,54 @@ def main():
     print("Initializing LayaRank...")
     reranker = LayaRank()
 
-    query = "How long do I have to return an online order to ACME Shop?"
+    # Query asking a specific factual question about Middle-earth lore
+    query = "How can the One Ring be destroyed, and where must it be taken?"
+
+    # A retrieval candidate pool containing direct evidence, partial evidence,
+    # topical distractors (LOTR lore without the answer), and completely irrelevant text (D&D).
     documents = [
-        "ACME Shop accepts online returns within 30 days of delivery.",
-        "For ACME Shop online orders, submit your return request within 30 days of receiving the item.",
-        "ACME Shop in-store purchases can be returned within 14 days of purchase.",
-        "ACME Shop products come with a one-year repair warranty covering manufacturing defects.",
-        "FooBar Shop accepts online returns within 60 days of delivery.",
+        # Doc 0: Direct, complete answer evidence
+        "The One Ring can only be destroyed by casting it into the fires of Mount Doom (Orodruin) in Mordor, where it was originally forged by Sauron.",
+        # Doc 1: Supporting evidence (who carries it and where)
+        "Frodo Baggins was appointed Ring-bearer and tasked with carrying the One Ring to Mordor to cast it into the Cracks of Doom.",
+        # Doc 2: Contextual background (where it was made)
+        "The One Ring was forged by the Dark Lord Sauron in the fires of Mount Doom during the Second Age.",
+        # Doc 3: Topical distractor (LOTR lore about Rivendell/Elves, but does not answer how to destroy the Ring)
+        "Elrond was the Lord of Rivendell and bearer of Vilya, the Ring of Air, one of the three Elven Rings of Power.",
+        # Doc 4: Topical distractor (Mentions trying to destroy the Ring with an axe, but not the actual solution)
+        "Gimli offered his battleaxe to destroy the One Ring at the Council of Elrond, but the weapon shattered upon impact.",
+        # Doc 5: Irrelevant cross-domain distractor (Dungeons & Dragons item description)
+        "In Dungeons & Dragons 5e, a Bag of Holding is a wondrous item that opens into an extradimensional space holding up to 500 pounds.",
     ]
 
-    print(f"Query: {query}")
+    print(f"\nQuery: {query}")
     print(f"Input documents count: {len(documents)}\n")
 
-    # Run relevance filtering with default threshold=0.2
-    response = reranker.relevance_rerank(query, documents, threshold=0.2, detail=True)
+    # -------------------------------------------------------------------------
+    # Relevance Filtering:
+    # `relevance_rerank` scores how well each passage provides factual evidence
+    # to answer the query. Passages meeting or exceeding the `threshold` are kept.
+    # -------------------------------------------------------------------------
+    threshold = 0.2  # Cutoff score for retaining evidence
+    response = reranker.relevance_rerank(
+        query=query,
+        documents=documents,
+        threshold=threshold,
+        detail=True,
+    )
 
-    print("--- Filtered Evidence (passed threshold >= 0.2) ---")
+    print(f"--- Filtered Evidence (passed threshold >= {threshold}) ---")
+    # Expected output: Passages ordered from highest evidential quality to lowest.
+    # Direct answer documents (Doc #0 and Doc #1) will rank at the top.
     for item in response["results"]:
-        print(f"[PASS] [{item['score']:.4f}] (Doc #{item['document_index']}): {item['text']}")
+        print(
+            f"[PASS] [Score: {item['score']:.4f}] (Doc #{item['document_index']}): {item['text']}"
+        )
 
+    # -------------------------------------------------------------------------
+    # Diagnostic Details:
+    # LayaRank provides execution metadata and threshold selection statistics.
+    # -------------------------------------------------------------------------
     print("\n--- Diagnostic Details ---")
     selection = response["detail"]["selection"]
     print(f"Total Evaluated : {selection['input_count']}")
